@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📚 読書トラッカー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700;900&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  /* ── Sound stubs ──────────────────────────────────────────────────────────
+     音を追加するときは下の SOUNDS オブジェクトに差し込んでください
+  ── ─────────────────────────────────────────────────────────────────────── */
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0f0d0a;
+    --card: rgba(255,255,255,0.04);
+    --border: rgba(200,169,110,0.2);
+    --text: #e8dcc8;
+    --muted: rgba(200,180,150,0.5);
+    --accent: #c8a96e;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans JP', sans-serif;
+    min-height: 100vh;
+    background-image:
+      radial-gradient(ellipse at 20% 20%, rgba(200,169,110,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 80%, rgba(100,80,50,0.08) 0%, transparent 60%);
+  }
+
+  /* ── Particles ────────────────────────────────────────────────────────── */
+  .particle {
+    position: fixed;
+    pointer-events: none;
+    z-index: 9999;
+    animation: pflyR var(--dur) var(--delay) cubic-bezier(.2,.6,.3,1) forwards;
+  }
+  @keyframes pflyR {
+    0%   { transform: translate(0,0) scale(1) rotate(0deg); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) scale(0) rotate(540deg); opacity: 0; }
+  }
+
+  /* ── Flash message ────────────────────────────────────────────────────── */
+  .flash-msg {
+    position: fixed;
+    top: 40%; left: 50%;
+    transform: translate(-50%,-50%);
+    font-size: clamp(2.5rem, 8vw, 5.5rem);
+    font-weight: 900;
+    pointer-events: none;
+    z-index: 10000;
+    animation: msgPop .6s cubic-bezier(.36,.07,.19,.97) forwards;
+    white-space: nowrap;
+    font-family: 'Noto Serif JP', serif;
+  }
+  @keyframes msgPop {
+    0%   { transform: translate(-50%,-50%) scale(0.2) rotate(-8deg); opacity: 0; }
+    45%  { transform: translate(-50%,-50%) scale(1.15) rotate(2deg); opacity: 1; }
+    80%  { transform: translate(-50%,-50%) scale(1) rotate(0deg); opacity: 1; }
+    100% { transform: translate(-50%,-50%) scale(1.05); opacity: 0; }
+  }
+
+  /* ── Screens ──────────────────────────────────────────────────────────── */
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  /* ── Setup ────────────────────────────────────────────────────────────── */
+  #setup-screen {
+    min-height: 100vh;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+  #setup-screen.active { display: flex; }
+  .setup-card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 2.5rem 2rem;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  }
+  .setup-title {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+  .setup-title .icon { font-size: 3rem; margin-bottom: 0.5rem; }
+  .setup-title h1 {
+    font-family: 'Noto Serif JP', serif;
+    font-size: 1.5rem;
+    color: var(--text);
+    letter-spacing: 0.05em;
+    margin-bottom: 0.4rem;
+  }
+  .setup-title p { color: var(--muted); font-size: 0.85rem; }
+
+  .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 1.2rem; }
+  .form-group label { color: var(--muted); font-size: 0.8rem; letter-spacing: 0.05em; }
+  .form-group input {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    padding: 10px 14px;
+    font-size: 1rem;
+    font-family: 'Noto Sans JP', sans-serif;
+    outline: none;
+    width: 100%;
+    transition: border-color 0.2s;
+  }
+  .form-group input:focus { border-color: var(--accent); }
+  .error-msg { color: #e74c3c; font-size: 0.8rem; text-align: center; margin-bottom: 0.8rem; display: none; }
+
+  .btn-primary {
+    width: 100%;
+    background: linear-gradient(135deg, #c8a96e, #a0784a);
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-family: 'Noto Serif JP', serif;
+    font-size: 1rem;
+    padding: 12px;
+    cursor: pointer;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    transition: opacity 0.2s;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+
+  /* ── Reading screen ───────────────────────────────────────────────────── */
+  #reading-screen { display: none; }
+  #reading-screen.active { display: block; }
+  .reading-inner {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 5rem;
+  }
+
+  .reading-header { text-align: center; margin-bottom: 1.5rem; }
+  .reading-header .book-name { color: var(--muted); font-size: 0.78rem; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .reading-header .app-title { font-family: 'Noto Serif JP', serif; font-size: clamp(1.1rem,3.5vw,1.5rem); letter-spacing: 0.05em; }
+
+  /* Progress */
+  .progress-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1rem;
+  }
+  .progress-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .progress-header .label { color: var(--muted); font-size: 0.78rem; }
+  .progress-header .value { color: var(--accent); font-size: 0.85rem; font-weight: 700; }
+  .progress-bar-bg { height: 8px; background: rgba(255,255,255,0.08); border-radius: 99px; overflow: hidden; }
+  .progress-bar-fill { height: 100%; background: linear-gradient(90deg,#c8a96e,#e8c88a); border-radius: 99px; transition: width 0.6s ease; width: 0%; }
+  .progress-pct { color: var(--muted); font-size: 0.72rem; margin-top: 6px; text-align: right; }
+
+  /* Stats */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.6rem; margin-bottom: 1.2rem; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 0.8rem 0.5rem; text-align: center; }
+  .stat-label { color: var(--muted); font-size: 0.66rem; margin-bottom: 4px; letter-spacing: 0.03em; }
+  .stat-value { color: var(--accent); font-weight: 700; font-size: 0.9rem; font-family: 'Noto Serif JP', serif; }
+
+  /* Main button */
+  .btn-wrap { display: flex; justify-content: center; margin-bottom: 0.8rem; }
+  .page-btn {
+    background: linear-gradient(135deg, #c8a96e 0%, #8b6335 100%);
+    border: none;
+    border-radius: 50%;
+    width: min(190px, 48vw);
+    height: min(190px, 48vw);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    box-shadow: 0 0 40px rgba(200,169,110,0.4), 0 8px 32px rgba(0,0,0,0.4);
+    animation: btnPulse 3s ease-in-out infinite;
+    transition: transform 0.1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .page-btn:active { transform: scale(0.93); }
+  .page-btn .btn-icon { font-size: clamp(2rem,7vw,3rem); }
+  .page-btn .btn-label {
+    font-family: 'Noto Serif JP', serif;
+    font-size: clamp(0.7rem,2.3vw,0.9rem);
+    color: #fff;
+    letter-spacing: 0.1em;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+  @keyframes btnPulse {
+    0%,100% { box-shadow: 0 0 40px rgba(200,169,110,0.4), 0 8px 32px rgba(0,0,0,0.4); }
+    50%      { box-shadow: 0 0 70px rgba(200,169,110,0.65), 0 8px 40px rgba(0,0,0,0.4); }
+  }
+
+  .since-last { text-align: center; color: var(--muted); font-size: 0.78rem; margin-bottom: 0.6rem; }
+  .since-last span { color: var(--accent); }
+
+  .pause-wrap { display: flex; justify-content: center; margin-bottom: 1.5rem; }
+  .btn-pause {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(200,169,110,0.25);
+    border-radius: 20px;
+    color: var(--muted);
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 0.8rem;
+    padding: 6px 18px;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.05em;
+  }
+  .btn-pause:hover { background: rgba(200,169,110,0.1); color: var(--accent); border-color: rgba(200,169,110,0.5); }
+  .btn-pause.paused {
+    background: rgba(200,169,110,0.12);
+    border-color: rgba(200,169,110,0.5);
+    color: var(--accent);
+    animation: pausePulse 2s ease-in-out infinite;
+  }
+  @keyframes pausePulse {
+    0%,100% { box-shadow: 0 0 0 rgba(200,169,110,0); }
+    50%      { box-shadow: 0 0 12px rgba(200,169,110,0.3); }
+  }
+  .paused-badge {
+    display: none;
+    text-align: center;
+    color: var(--accent);
+    font-size: 0.75rem;
+    margin-bottom: 0.5rem;
+    letter-spacing: 0.08em;
+    animation: pausePulse 2s ease-in-out infinite;
+  }
+  .paused-badge.visible { display: block; }
+
+  /* Records */
+  .records-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.8rem; flex-wrap: wrap; gap: 0.5rem; }
+  .records-header .label { color: var(--muted); font-size: 0.78rem; letter-spacing: 0.05em; }
+  .records-header .btn-group { display: flex; gap: 0.5rem; }
+
+  .btn-sm {
+    border-radius: 7px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-family: 'Noto Sans JP', sans-serif;
+    transition: opacity 0.2s;
+  }
+  .btn-memo   { background: rgba(74,154,138,0.15); border: 1px solid rgba(74,154,138,0.4); color: #4a9a8a; }
+  .btn-copy   { background: rgba(139,99,53,0.15);  border: 1px solid rgba(139,99,53,0.4);  color: #c8a96e; }
+  .btn-copy.done { background: rgba(76,175,80,0.15); border-color: rgba(76,175,80,0.5); color: #4caf50; }
+  .btn-newbook{ background: rgba(100,100,200,0.1); border: 1px solid rgba(100,100,200,0.3); color: #aab; }
+
+  .empty-msg { text-align: center; color: rgba(200,180,150,0.35); padding: 2.5rem; font-size: 0.85rem; }
+
+  .record-list { display: flex; flex-direction: column; gap: 0.6rem; }
+  .record-item {
+    background: var(--card);
+    border: 1px solid rgba(200,169,110,0.15);
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    animation: recIn 0.35s ease-out;
+  }
+  @keyframes recIn {
+    from { opacity: 0; transform: translateY(-12px) scale(0.97); }
+    to   { opacity: 1; transform: none; }
+  }
+  .record-row { display: flex; justify-content: space-between; align-items: flex-start; }
+  .record-info .page-num { color: var(--accent); font-weight: 700; font-family: 'Noto Serif JP', serif; }
+  .record-info .dur { color: var(--text); font-size: 0.85rem; margin-left: 0.5rem; }
+  .record-info .memo-label { color: #7fb3c8; font-size: 0.85rem; }
+  .record-info .rec-time { color: rgba(200,180,150,0.4); font-size: 0.7rem; margin-top: 2px; }
+  .record-btns { display: flex; gap: 6px; flex-shrink: 0; }
+  .btn-icon-sm {
+    border-radius: 6px;
+    padding: 3px 8px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    transition: opacity 0.2s;
+    border: none;
+  }
+  .btn-edit   { background: rgba(106,143,176,0.15); border: 1px solid rgba(106,143,176,0.3) !important; color: #6a8fb0; }
+  .btn-delete { background: rgba(160,80,80,0.15);   border: 1px solid rgba(160,80,80,0.3) !important;   color: #a05050; }
+
+  .memo-display { margin-top: 6px; background: rgba(255,255,255,0.04); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: rgba(232,220,200,0.7); white-space: pre-wrap; }
+  .memo-editor { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .memo-textarea {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 8px 10px;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 0.83rem;
+    resize: vertical;
+    min-height: 56px;
+    outline: none;
+    width: 100%;
+  }
+  .memo-editor-btns { display: flex; gap: 6px; }
+  .btn-save { background: linear-gradient(90deg,#4a9a8a,#5bb8a6); border: none; border-radius: 6px; color: #fff; font-weight: 700; padding: 5px 14px; cursor: pointer; font-size: 0.8rem; }
+  .btn-cancel { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 0.8rem; }
+
+  /* ── Finished screen ──────────────────────────────────────────────────── */
+  #finished-screen {
+    display: none;
+    min-height: 100vh;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+  #finished-screen.active { display: flex; }
+  .finished-inner { width: 100%; max-width: 440px; text-align: center; }
+  .finished-icon { font-size: 4rem; margin-bottom: 1rem; animation: bigBounce 0.8s ease-out; }
+  @keyframes bigBounce {
+    0%   { transform: scale(0.3); opacity: 0; }
+    60%  { transform: scale(1.3); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .finished-title { font-family: 'Noto Serif JP', serif; font-size: 1.8rem; color: var(--accent); margin-bottom: 0.5rem; }
+  .finished-book  { color: var(--muted); margin-bottom: 0.3rem; }
+  .finished-stats { color: var(--text); font-size: 1rem; margin-bottom: 2rem; }
+  .finished-btns  { display: flex; gap: 0.8rem; justify-content: center; flex-wrap: wrap; }
+  .btn-finished-copy { background: rgba(139,99,53,0.2); border: 1px solid rgba(139,99,53,0.5); color: var(--accent); border-radius: 10px; padding: 10px 20px; cursor: pointer; font-size: 0.9rem; font-family: 'Noto Sans JP', sans-serif; transition: opacity 0.2s; }
+  .btn-finished-copy.done { background: rgba(76,175,80,0.15); border-color: rgba(76,175,80,0.5); color: #4caf50; }
+  .btn-finished-new { background: linear-gradient(135deg,#c8a96e,#a0784a); border: none; border-radius: 10px; color: #fff; padding: 10px 20px; cursor: pointer; font-size: 0.9rem; font-family: 'Noto Serif JP', serif; font-weight: 700; }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-thumb { background: rgba(200,169,110,0.3); border-radius: 99px; }
+</style>
+</head>
+<body>
+
+<!-- ── Setup screen ──────────────────────────────────────────────────────── -->
+<div id="setup-screen" class="active">
+  <div class="setup-card">
+    <div class="setup-title">
+      <div class="icon">📚</div>
+      <h1>読書トラッカー</h1>
+      <p>本の情報を入力してスタート</p>
+    </div>
+    <div class="form-group">
+      <label>📖 本のタイトル</label>
+      <input id="inp-title" type="text" placeholder="例：日商簿記3級 テキスト">
+    </div>
+    <div class="form-group">
+      <label>📄 今いるページ数</label>
+      <input id="inp-page" type="number" min="1" placeholder="例：1">
+    </div>
+    <div class="form-group">
+      <label>📚 本の総ページ数</label>
+      <input id="inp-total" type="number" min="1" placeholder="例：280">
+    </div>
+    <div class="error-msg" id="setup-error"></div>
+    <button class="btn-primary" onclick="startReading()">読書をはじめる 🚀</button>
+  </div>
+</div>
+
+<!-- ── Reading screen ────────────────────────────────────────────────────── -->
+<div id="reading-screen">
+  <div class="reading-inner">
+
+    <div class="reading-header">
+      <div class="book-name" id="display-book-name"></div>
+      <div class="app-title">読書トラッカー</div>
+    </div>
+
+    <div class="progress-card">
+      <div class="progress-header">
+        <span class="label">進捗</span>
+        <span class="value" id="display-page-info"></span>
+      </div>
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
+      <div class="progress-pct" id="display-pct"></div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">今セッション</div>
+        <div class="stat-value" id="stat-elapsed">0秒</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">読んだページ</div>
+        <div class="stat-value" id="stat-pages">0ページ</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">平均時間/P</div>
+        <div class="stat-value" id="stat-avg">—</div>
+      </div>
+    </div>
+
+    <div class="btn-wrap">
+      <button class="page-btn" onclick="turnPage()">
+        <span class="btn-icon">📖</span>
+        <span class="btn-label">ページめくった！</span>
+      </button>
+    </div>
+
+    <div class="since-last">前のページから <span id="since-last-val">0秒</span> 経過</div>
+    <div class="paused-badge" id="paused-badge">⏸ 一時停止中 — タイマーが止まっています</div>
+    <div class="pause-wrap">
+      <button class="btn-pause" id="pause-btn" onclick="togglePause()">⏸ 一時停止</button>
+    </div>
+
+    <div class="records-header">
+      <span class="label" id="records-count">📋 記録（0件）</span>
+      <div class="btn-group">
+        <button class="btn-sm btn-memo" onclick="addMemoRecord()">＋メモ</button>
+        <button class="btn-sm btn-copy" id="copy-btn" onclick="handleCopy()">📋 コピー</button>
+        <button class="btn-sm btn-newbook" onclick="goToSetup()">📚 新しい本</button>
+      </div>
+    </div>
+
+    <div class="empty-msg" id="empty-msg">ページをめくってスタート！📖</div>
+    <div class="record-list" id="record-list"></div>
+  </div>
+</div>
+
+<!-- ── Finished screen ───────────────────────────────────────────────────── -->
+<div id="finished-screen">
+  <div class="finished-inner">
+    <div class="finished-icon">🎊</div>
+    <div class="finished-title">読了！おめでとう！！</div>
+    <div class="finished-book" id="finished-book-name"></div>
+    <div class="finished-stats" id="finished-stats"></div>
+    <div class="finished-btns">
+      <button class="btn-finished-copy" id="finished-copy-btn" onclick="handleFinishedCopy()">📋 記録をコピー</button>
+      <button class="btn-finished-new" onclick="goToSetup()">📚 新しい本を始める</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Sound stubs ────────────────────────────────────────────────────────────
+// 音を追加するときはここを編集してください
+var SOUNDS = {
+  pageTurn: function() {},
+  celebrate: function() {},
+  setup:    function() {},
+};
+
+// ── Celebration patterns ───────────────────────────────────────────────────
+var CELEBRATIONS = [
+  { emojis: ["📖","✨","🌟","💫","⭐"], colors: ["#f4d03f","#f39c12","#fff7aa"], msg: ["よし！","1ページ！","読んだ！","進んだ！","📖✨"] },
+  { emojis: ["🎉","🎊","🥳","🎈","💪"], colors: ["#e74c3c","#9b59b6","#3498db"], msg: ["いいぞ！","その調子！","最高！","素晴らしい！","🎉🎊"] },
+  { emojis: ["🏆","👑","🥇","🦁","⚡"], colors: ["#f1c40f","#e67e22","#fffde7"], msg: ["王者！","完璧！","無敵！","天才！","🏆👑"] },
+  { emojis: ["🚀","🌙","🌠","💥","🔥"], colors: ["#1abc9c","#3498db","#9b59b6"], msg: ["飛んだ！","突破！","爆進！","宇宙へ！","🚀🌙"] },
+  { emojis: ["🌸","🌺","🌻","🍀","🌈"], colors: ["#ff6b9d","#c84b8f","#ffd3e8"], msg: ["花咲く！","麗しい！","優雅！","美しい！","🌸🌈"] },
+];
+
+// ── State ──────────────────────────────────────────────────────────────────
+var state = {
+  bookTitle: "",
+  startPage: 1,
+  currentPage: 1,
+  totalPages: 1,
+  pressCount: 0,
+  records: [],
+  lastPageTime: null,
+  sessionStart: null,
+  // タイマー一時停止用
+  paused: false,
+  pausedAt: null,        // 一時停止した時刻
+  totalPausedMs: 0,      // 累計一時停止時間(ms)
+  lastPagePausedMs: 0,   // 前のページめくりから累計一時停止時間(ms)
+};
+
+var elapsedTimer = null;
+var sinceTimer = null;
+var uidCounter = 0;
+function newId() { uidCounter++; return uidCounter; }
+
+// ── Format helpers ─────────────────────────────────────────────────────────
+function fmtDur(secs) {
+  if (secs < 60) return secs + "秒";
+  var m = Math.floor(secs / 60), s = secs % 60;
+  return s > 0 ? m + "分" + s + "秒" : m + "分";
+}
+function fmtTime(d) {
+  return d.toLocaleString("ja-JP", { month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit" });
+}
+
+// ── Screen switching ───────────────────────────────────────────────────────
+function showScreen(id) {
+  ["setup-screen","reading-screen","finished-screen"].forEach(function(s) {
+    document.getElementById(s).classList.remove("active");
+  });
+  document.getElementById(id).classList.add("active");
+}
+
+// ── Setup ──────────────────────────────────────────────────────────────────
+function startReading() {
+  var title = document.getElementById("inp-title").value.trim();
+  var cp    = parseInt(document.getElementById("inp-page").value);
+  var tp    = parseInt(document.getElementById("inp-total").value);
+  var errEl = document.getElementById("setup-error");
+
+  if (!title)              { showError("本のタイトルを入力してね"); return; }
+  if (isNaN(cp) || cp < 1){ showError("今のページ数を正しく入力してね"); return; }
+  if (isNaN(tp) || tp < cp){ showError("総ページ数は今のページ以上にしてね"); return; }
+  errEl.style.display = "none";
+
+  state.bookTitle   = title;
+  state.startPage   = cp;
+  state.currentPage = cp;
+  state.totalPages  = tp;
+  state.pressCount  = 0;
+  state.records     = [];
+  state.lastPageTime = new Date();
+  state.sessionStart = new Date();
+  state.paused          = false;
+  state.pausedAt        = null;
+  state.totalPausedMs   = 0;
+  state.lastPagePausedMs = 0;
+
+  SOUNDS.setup();
+  stopTimers();
+  startTimers();
+  renderReading();
+  showScreen("reading-screen");
+}
+
+function showError(msg) {
+  var el = document.getElementById("setup-error");
+  el.textContent = msg;
+  el.style.display = "block";
+}
+
+// ── Enter key on setup inputs ──────────────────────────────────────────────
+["inp-title","inp-page","inp-total"].forEach(function(id) {
+  document.getElementById(id).addEventListener("keydown", function(e) {
+    if (e.key === "Enter") startReading();
+  });
+});
+
+// ── Timers ─────────────────────────────────────────────────────────────────
+function startTimers() {
+  elapsedTimer = setInterval(function() {
+    if (state.paused) return;
+    var secs = Math.round((Date.now() - state.sessionStart.getTime() - state.totalPausedMs) / 1000);
+    document.getElementById("stat-elapsed").textContent = fmtDur(secs);
+  }, 1000);
+
+  sinceTimer = setInterval(function() {
+    if (state.paused) return;
+    var secs = Math.round((Date.now() - state.lastPageTime.getTime() - state.lastPagePausedMs) / 1000);
+    document.getElementById("since-last-val").textContent = fmtDur(secs);
+  }, 1000);
+}
+
+function stopTimers() {
+  clearInterval(elapsedTimer);
+  clearInterval(sinceTimer);
+  elapsedTimer = null;
+  sinceTimer   = null;
+}
+
+// ── Pause / Resume ──────────────────────────────────────────────────────────
+function togglePause() {
+  var btn   = document.getElementById("pause-btn");
+  var badge = document.getElementById("paused-badge");
+  if (!state.paused) {
+    // → 一時停止
+    state.paused   = true;
+    state.pausedAt = Date.now();
+    btn.textContent = "▶ 再開";
+    btn.classList.add("paused");
+    badge.classList.add("visible");
+  } else {
+    // → 再開
+    var pausedMs = Date.now() - state.pausedAt;
+    state.totalPausedMs    += pausedMs;
+    state.lastPagePausedMs += pausedMs;
+    state.paused   = false;
+    state.pausedAt = null;
+    btn.textContent = "⏸ 一時停止";
+    btn.classList.remove("paused");
+    badge.classList.remove("visible");
+  }
+}
+
+// ── Page turn ──────────────────────────────────────────────────────────────
+function nextOddPage(currentPage, pressCount) {
+  // 1回目は+1、以降+2 → 1,3,5,7... (奇数列)
+  return pressCount === 1 ? currentPage + 1 : currentPage + 2;
+}
+
+function turnPage() {
+  // 一時停止中はページめくり不可
+  if (state.paused) {
+    var badge = document.getElementById("paused-badge");
+    badge.textContent = "⏸ 再開してからページをめくってね！";
+    setTimeout(function() { badge.textContent = "⏸ 一時停止中 — タイマーが止まっています"; }, 2000);
+    return;
+  }
+  var now = new Date();
+  // ページ間の実際の読書時間（一時停止を除く）
+  var duration = Math.round((now.getTime() - state.lastPageTime.getTime() - state.lastPagePausedMs) / 1000);
+  state.pressCount++;
+  var newPage = nextOddPage(state.currentPage, state.pressCount);
+
+  SOUNDS.pageTurn();
+  SOUNDS.celebrate();
+
+  var cel = CELEBRATIONS[Math.floor(Math.random() * CELEBRATIONS.length)];
+  spawnCelebration(cel);
+  setTimeout(function() { spawnCelebration(cel); }, 350);
+
+  var rec = {
+    id: newId(), type: "page",
+    time: now, page: newPage,
+    duration: Math.max(0, duration), memo: "",
+    color: cel.colors[0],
+  };
+  state.records.unshift(rec);
+  state.currentPage = newPage;
+  state.lastPageTime = now;
+  state.lastPagePausedMs = 0; // リセット
+
+  // Reset since-last counter immediately
+  document.getElementById("since-last-val").textContent = "0秒";
+
+  renderReading();
+
+  if (newPage >= state.totalPages) {
+    stopTimers();
+    setTimeout(showFinished, 1800);
+  }
+}
+
+// ── Memo ───────────────────────────────────────────────────────────────────
+function addMemoRecord() {
+  state.records.unshift({ id: newId(), type: "memo", time: new Date(), memo: "", color: "#7fb3c8" });
+  renderReading();
+}
+
+function deleteRecord(id) {
+  state.records = state.records.filter(function(r) { return r.id !== id; });
+  renderReading();
+}
+
+function openMemoEditor(id) {
+  var editorDiv = document.getElementById("memo-editor-" + id);
+  var displayDiv = document.getElementById("memo-display-" + id);
+  if (editorDiv) {
+    editorDiv.style.display = "flex";
+    if (displayDiv) displayDiv.style.display = "none";
+    var ta = editorDiv.querySelector("textarea");
+    if (ta) ta.focus();
+  }
+}
+
+function closeMemoEditor(id) {
+  var editorDiv = document.getElementById("memo-editor-" + id);
+  var rec = state.records.find(function(r) { return r.id === id; });
+  if (editorDiv) editorDiv.style.display = "none";
+  var displayDiv = document.getElementById("memo-display-" + id);
+  if (displayDiv && rec && rec.memo) displayDiv.style.display = "block";
+}
+
+function saveMemo(id) {
+  var ta = document.querySelector("#memo-editor-" + id + " textarea");
+  if (!ta) return;
+  var rec = state.records.find(function(r) { return r.id === id; });
+  if (rec) rec.memo = ta.value;
+  renderReading();
+}
+
+// ── Render reading screen ──────────────────────────────────────────────────
+function renderReading() {
+  // Header
+  document.getElementById("display-book-name").textContent = "📚 " + state.bookTitle;
+
+  // Progress
+  var remaining = state.totalPages - state.currentPage;
+  document.getElementById("display-page-info").textContent =
+    "p." + state.currentPage + " / " + state.totalPages + "（残り " + remaining + "ページ）";
+
+  var range = state.totalPages - state.startPage;
+  var done  = state.currentPage - state.startPage;
+  var pct   = range > 0 ? Math.min(100, (done / range) * 100) : 0;
+  document.getElementById("progress-fill").style.width = pct + "%";
+  document.getElementById("display-pct").textContent = pct.toFixed(1) + "%";
+
+  // Stats
+  var pageRecs = state.records.filter(function(r) { return r.type === "page"; });
+  document.getElementById("stat-pages").textContent = pageRecs.length + "ページ";
+  if (pageRecs.length > 0) {
+    var total = pageRecs.reduce(function(s,r) { return s + r.duration; }, 0);
+    document.getElementById("stat-avg").textContent = fmtDur(Math.round(total / pageRecs.length));
+  } else {
+    document.getElementById("stat-avg").textContent = "—";
+  }
+
+  // Records count
+  document.getElementById("records-count").textContent = "📋 記録（" + state.records.length + "件）";
+
+  // Empty msg
+  document.getElementById("empty-msg").style.display = state.records.length === 0 ? "block" : "none";
+
+  // Record list
+  var list = document.getElementById("record-list");
+  list.innerHTML = "";
+  state.records.forEach(function(rec) {
+    var item = document.createElement("div");
+    item.className = "record-item";
+    item.style.borderLeft = "3px solid " + rec.color;
+
+    var infoHtml = "";
+    if (rec.type === "page") {
+      infoHtml = '<span class="page-num">p.' + rec.page + '</span>' +
+                 '<span class="dur">' + fmtDur(rec.duration) + '/ページ</span>';
+    } else {
+      infoHtml = '<span class="memo-label">📝 メモ</span>';
+    }
+
+    var memoDisplayHtml = rec.memo
+      ? '<div class="memo-display" id="memo-display-' + rec.id + '">' + escapeHtml(rec.memo) + '</div>'
+      : '<div class="memo-display" id="memo-display-' + rec.id + '" style="display:none"></div>';
+
+    item.innerHTML =
+      '<div class="record-row">' +
+        '<div class="record-info">' +
+          '<div>' + infoHtml + '</div>' +
+          '<div class="rec-time">' + fmtTime(rec.time) + '</div>' +
+        '</div>' +
+        '<div class="record-btns">' +
+          '<button class="btn-icon-sm btn-edit" onclick="openMemoEditor(' + rec.id + ')">✏️</button>' +
+          '<button class="btn-icon-sm btn-delete" onclick="deleteRecord(' + rec.id + ')">🗑️</button>' +
+        '</div>' +
+      '</div>' +
+      memoDisplayHtml +
+      '<div class="memo-editor" id="memo-editor-' + rec.id + '" style="display:none">' +
+        '<textarea class="memo-textarea" placeholder="メモを入力...">' + escapeHtml(rec.memo) + '</textarea>' +
+        '<div class="memo-editor-btns">' +
+          '<button class="btn-save" onclick="saveMemo(' + rec.id + ')">保存</button>' +
+          '<button class="btn-cancel" onclick="closeMemoEditor(' + rec.id + ')">キャンセル</button>' +
+        '</div>' +
+      '</div>';
+
+    list.appendChild(item);
+  });
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ── Copy ───────────────────────────────────────────────────────────────────
+function buildCopyText() {
+  var lines = [
+    "📚 " + state.bookTitle,
+    "開始ページ: " + state.startPage + "ページ",
+    "──────────────────────────────",
+  ];
+  state.records.forEach(function(r, i) {
+    if (r.type === "page") {
+      lines.push("[" + (i+1) + "] " + fmtTime(r.time) + " | p." + r.page + " | " + fmtDur(r.duration) + "/ページ");
+      if (r.memo) lines.push("    メモ: " + r.memo);
+    } else {
+      lines.push("[" + (i+1) + "] 📝 " + fmtTime(r.time));
+      if (r.memo) lines.push("    " + r.memo);
+    }
+  });
+  var pageRecs = state.records.filter(function(r) { return r.type === "page"; });
+  if (pageRecs.length > 0) {
+    var total = pageRecs.reduce(function(s,r) { return s + r.duration; }, 0);
+    lines.push("──────────────────────────────");
+    lines.push("合計: " + pageRecs.length + "ページ | 平均: " + fmtDur(Math.round(total / pageRecs.length)) + "/ページ");
+  }
+  return lines.join("\n");
+}
+
+async function doCopy(text, btnId, doneText, origText) {
+  var btn = document.getElementById(btnId);
+  var ok = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    }
+  } catch(e) {}
+  if (!ok) {
+    var el = document.createElement("textarea");
+    el.value = text;
+    el.style.cssText = "position:fixed;top:-9999px;left:-9999px;opacity:0";
+    document.body.appendChild(el);
+    el.focus(); el.select();
+    try { ok = document.execCommand("copy"); } catch(e) {}
+    document.body.removeChild(el);
+  }
+  if (ok && btn) {
+    btn.textContent = doneText;
+    btn.classList.add("done");
+    setTimeout(function() { btn.textContent = origText; btn.classList.remove("done"); }, 2000);
+  }
+}
+
+function handleCopy() { doCopy(buildCopyText(), "copy-btn", "✓ コピー済み", "📋 コピー"); }
+function handleFinishedCopy() { doCopy(buildCopyText(), "finished-copy-btn", "✓ コピー済み", "📋 記録をコピー"); }
+
+// ── Finished screen ────────────────────────────────────────────────────────
+function showFinished() {
+  document.getElementById("finished-book-name").textContent = state.bookTitle;
+  var pageRecs = state.records.filter(function(r) { return r.type === "page"; });
+  var total = pageRecs.reduce(function(s,r) { return s + r.duration; }, 0);
+  document.getElementById("finished-stats").textContent =
+    pageRecs.length + "ページ読破 / 総時間 " + fmtDur(total);
+  showScreen("finished-screen");
+}
+
+// ── Go to setup ────────────────────────────────────────────────────────────
+function goToSetup() {
+  stopTimers();
+  state.paused = false;
+  var btn = document.getElementById("pause-btn");
+  var badge = document.getElementById("paused-badge");
+  if (btn) { btn.textContent = "⏸ 一時停止"; btn.classList.remove("paused"); }
+  if (badge) { badge.classList.remove("visible"); badge.textContent = "⏸ 一時停止中 — タイマーが止まっています"; }
+  document.getElementById("inp-title").value = "";
+  document.getElementById("inp-page").value  = "";
+  document.getElementById("inp-total").value = "";
+  document.getElementById("setup-error").style.display = "none";
+  showScreen("setup-screen");
+}
+
+// ── Particles & flash messages ─────────────────────────────────────────────
+function spawnCelebration(cel) {
+  var count = 50 + Math.floor(Math.random() * 30);
+  for (var i = 0; i < count; i++) {
+    (function() {
+      var x = Math.random() * window.innerWidth;
+      var y = Math.random() * window.innerHeight * 0.6;
+      var color = cel.colors[Math.floor(Math.random() * cel.colors.length)];
+      var emoji = cel.emojis[Math.floor(Math.random() * cel.emojis.length)];
+      var dur   = (0.9 + Math.random() * 0.8).toFixed(2);
+      var delay = (Math.random() * 0.2).toFixed(2);
+      var dx    = (Math.cos(Math.random() * Math.PI * 2) * (80 + Math.random() * 180)).toFixed(1);
+      var dy    = (Math.sin(Math.random() * Math.PI * 2) * (80 + Math.random() * 180) - 80).toFixed(1);
+      var size  = Math.floor(18 + Math.random() * 26);
+
+      var el = document.createElement("div");
+      el.className = "particle";
+      el.textContent = emoji;
+      el.style.left   = x + "px";
+      el.style.top    = y + "px";
+      el.style.fontSize = size + "px";
+      el.style.setProperty("--dur",   dur + "s");
+      el.style.setProperty("--delay", delay + "s");
+      el.style.setProperty("--dx",    dx + "px");
+      el.style.setProperty("--dy",    dy + "px");
+      el.style.filter = "drop-shadow(0 0 6px " + color + ")";
+      document.body.appendChild(el);
+
+      var totalMs = (parseFloat(dur) + parseFloat(delay)) * 1000 + 100;
+      setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, totalMs);
+    })();
+  }
+
+  // Flash messages
+  var idx = 0;
+  var showNext = function() {
+    if (idx >= cel.msg.length) return;
+    var text  = cel.msg[idx];
+    var color = cel.colors[idx % cel.colors.length];
+    idx++;
+
+    var el = document.createElement("div");
+    el.className = "flash-msg";
+    el.textContent = text;
+    el.style.color = color;
+    el.style.textShadow = "0 0 30px " + color + ", 0 0 60px " + color;
+    document.body.appendChild(el);
+    setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 600);
+
+    if (idx < cel.msg.length) setTimeout(showNext, 380);
+  };
+  showNext();
+}
+</script>
+</body>
+</html>
